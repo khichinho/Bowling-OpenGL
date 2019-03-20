@@ -1,0 +1,25 @@
+COL781 Computer Graphics
+
+Assignment 2: Simulation of Alley Bowling - Modeling and Animation
+
+Due Date: 18.3.2019
+
+This assignment has two parts. The first part (A) involves modelilng and animation of a bowler and associated environment with following features.
+
+~The modeling of a bowler needs to be represented as a hierarchical model with an articulated structure. The model can be seen as a tree.
+~The primitives to model a bowler should be from OpenGL primitves.
+~The models should be texture mapped.
+~The hierarchical model defines a heirarchy where a transformation when applied to a node in the tree its sub tree inherits the transformation.
+~The animation module will involve defining some key frames of the bowler, which may form a particular type of motion for the purpose of bowling when interpolated. The parameter of interpolation can be correlated with time.
+~You can change the parameter of interpolation to perform variation in the way the motion takes place. This can be achieved by using appropriate function.
+~You need to also model -- the bowl, the pins, the track, and the gutter.
+~The path on the bowling track can be defined through a parametric curve.
+~The camera can follow the bowl, can be at fixed locations on looking at a zone of the whole scene, and a wide angle camera enabling the view of the entire scene.
+~The bowl motion should have rolling and spinning.
+~The collision detection and response as a result of some reasonable law of physics such as conservation of momentum may be simulated considering projection in a plane of the track.
+~The fall of a pin which is triggerd through collision may be simulated using some heuristics.
+~This part may be demonstrated using a single pin.
+~The second part (B) will involve interactively changing some parameters such as the initial speed, the path and the camera. This part will require to have all the 9 pins.
+
+Animation -
+https://www.pond5.com/stock-footage/518166/3d-cg-ten-pin-bowling-slow-motion-strike.html
