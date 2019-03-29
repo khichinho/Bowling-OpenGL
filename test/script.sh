@@ -1,1 +1,0 @@
-sed "s/$/ 1.0, 1.0,/g" vertices2.txt > vertices3.txt
