@@ -13,7 +13,7 @@
 #include "model.h"
 
 #include <SOIL/SOIL.h>
-
+#include <vector>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -21,11 +21,11 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1200;
+const unsigned int SCR_HEIGHT = 800;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 2.5f, 7.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -73,16 +73,23 @@ int main()
     }
 
     // configure global opengl state
-    // -----------------------------
     glEnable(GL_DEPTH_TEST);
 
     // build and compile shaders
-    // -------------------------
-    Shader pinShader("bowling.vs", "bowling.fs");
+    Shader pinShader("pin.vs", "pin.fs");
 
     // load models
-    // -----------
-    Model ourModel("../resources/Bowling/BowlingPins/BowlingPins.obj");
+    vector<Model> pinModels;
+    for(int i=0; i<10; i++){
+        Model pinModel("../resources/Bowling/BowlingPins/BowlingPins.obj");
+        pinModels.push_back(pinModel);
+    }
+
+    // build and compile shaders
+    Shader ballShader("ball.vs", "ball.fs");
+
+    // load models
+    Model ballModel("../resources/Bowling/Ball/Ball.obj");
 
 
 
@@ -94,15 +101,15 @@ int main()
 
 
     // build and compile our shader zprogram
-    Shader ourShader("floor_camera.vs", "floor_camera.fs");
+    Shader floorShader("floor_camera.vs", "floor_camera.fs");
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
     float vertices[] = {
         // positions          // texture coords
-         200.0f, 1.0f,  300.0f,   1.0f, 1.0f, // top right
-         200.0f, 1.0f, -1500.0f,   1.0f, 0.0f, // bottom right
-        -200.0f, 1.0f, -1500.0f,   0.0f, 0.0f, // bottom left
-        -200.0f, 1.0f,  300.0f,   0.0f, 1.0f  // top left 
+         100.0f, 0.0f,  0.0f,   1.0f, 1.0f, // top right
+         100.0f, 0.0f, -1500.0f,   1.0f, 0.0f, // bottom right
+        -100.0f, 0.0f, -1500.0f,   0.0f, 0.0f, // bottom left
+        -100.0f, 0.0f,  0.0f,   0.0f, 1.0f  // top left 
     };
     unsigned int indices[] = {  
         0, 1, 3, // first triangle
@@ -156,8 +163,12 @@ int main()
     SOIL_free_image_data(data);
 
     // activate shader
-    ourShader.use();
-    ourShader.setInt("texture1", 0);
+    floorShader.use();
+    floorShader.setInt("texture1", 0);
+
+
+    // ? draw in wireframe
+    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 
 
@@ -167,88 +178,174 @@ int main()
 
 
 
+    int pinsDistance = 30.0f;
+    int omega = 0.0f;
+    int speed = -3.0f;
+    int distance = 0.0f;
+    // pins data
+    glm::vec3 pinLocation = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 ballLocation = glm::vec3(0.0f, 0.0f, 0.0f);
 
+    vector<glm::vec3> pinLocationVector;
 
-
-    // draw in wireframe
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    int isBallonFloor = 1;
+    vector<int> isPinHit;
+    for(int i=0; i<10; i++) isPinHit.push_back(0);
 
     // render loop
-    // -----------
     while (!glfwWindowShouldClose(window))
     {
         // per-frame time logic
-        // --------------------
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         // input
-        // -----
         processInput(window);
 
         // render
-        // ------
-        glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+        glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+
+
+
+
+        ///////////// PINS ////////////////
         // don't forget to enable shader before setting uniforms
         pinShader.use();
 
         // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        pinShader.setMat4("projection", projection);
-        pinShader.setMat4("view", view);
+        glm::mat4 pinProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        pinShader.setMat4("projection", pinProjection);
+
+        glm::mat4 pinView = camera.GetViewMatrix();
+        pinShader.setMat4("view", pinView);
+        
+        glm::mat4 pinModel = glm::mat4(1.0f);
+        pinShader.setMat4("model", pinModel);
+        pinModel = glm::scale(pinModel, glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
+
+        for(int i=0; i<10; i++)
+        {
+            // render the loaded model
+            if(i==0){
+                pinModel = glm::translate(pinModel, glm::vec3(1.5*pinsDistance, -10.9f, -1450.0f));
+                pinLocation += glm::vec3(1.5*pinsDistance, 0.0f, -1450.0f);
+            }
+            pinShader.setMat4("model", pinModel);
+
+            if(isPinHit.at(i) == 0){
+                pinModels[i].Draw(pinShader);
+            }
+
+            // arrangment for pin structure
+            if(i==3){
+                pinModel = glm::translate(pinModel, glm::vec3(2.5*pinsDistance, 0.0f, pinsDistance));
+                pinLocation += glm::vec3(2.5*pinsDistance, 0.0f, pinsDistance);
+            }
+            else if(i==6){
+                pinModel = glm::translate(pinModel, glm::vec3(1.5*pinsDistance, 0.0f, pinsDistance));
+                pinLocation += glm::vec3(1.5*pinsDistance, 0.0f, pinsDistance);
+            }
+            else if(i==8){
+                pinModel = glm::translate(pinModel, glm::vec3(0.5*pinsDistance, 0.0f, pinsDistance));
+                pinLocation += glm::vec3(0.5*pinsDistance, 0.0f, pinsDistance);
+            }
+            else{
+                pinModel = glm::translate(pinModel, glm::vec3(-pinsDistance, 0.0f, 0.0f));
+                pinLocation += glm::vec3(-pinsDistance, 0.0f, 0.0f);
+            }
+            pinLocationVector.push_back(pinLocation);
+        }
+
+
+
+
+
+
+
+
+        ///////////// BALL ////////////////
+        // view/projection transformations
+        glm::mat4 ballProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        pinShader.setMat4("projection", ballProjection);
+
+        glm::mat4 ballView = camera.GetViewMatrix();
+        pinShader.setMat4("view", ballView);
+        
+        glm::mat4 ball_Model = glm::mat4(1.0f);
+        pinShader.setMat4("model", ball_Model);
+
+        ball_Model = glm::scale(ball_Model, glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
+
+        distance += speed;
+        ball_Model = glm::translate(ball_Model, glm::vec3(0.0f, 0.0f, distance));
+        ballLocation += glm::vec3(0.0f, 0.0f, distance);
+
+        // don't forget to enable shader before setting uniforms
+        ballShader.use();
+
+        // view/projection transformations
+        ballShader.setMat4("projection", ballProjection);
+        ballShader.setMat4("view", ballView);
 
         // render the loaded model
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(10.0f, -10.0f, -15.0f)); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
-        pinShader.setMat4("model", model);
+        ballShader.setMat4("model", ball_Model);
+        ball_Model = glm::translate(ball_Model, glm::vec3(0.0f, -11.0f, 0.0f));
 
-
-        ourModel.Draw(pinShader);
-        model = glm::translate(model, glm::vec3(0.10f, 0.10f, 0.10f)); // translate it down so it's at the center of the scene
-        ourModel.Draw(pinShader);
+        if(isBallonFloor == 1 ){ ballModel.Draw(ballShader); }
 
 
 
 
+        // intersection loop here
+        for(int i=0; i<10; i++){
 
+        }
+        if(ballLocation.z < -5050/0.02 ){
+            cout<<ballLocation.z;
+            isBallonFloor = 0;
+        }
+
+
+
+
+
+        // view/projection transformations
+        glm::mat4 floorProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        pinShader.setMat4("projection", floorProjection);
+
+        glm::mat4 floorView = camera.GetViewMatrix();
+        pinShader.setMat4("view", floorView);
+        
+        glm::mat4 floorModel = glm::mat4(1.0f);
+        pinShader.setMat4("model", floorModel);
+
+        floorModel = glm::scale(floorModel, glm::vec3(0.02f, 0.02f, 0.02f)); // it's a bit too big for our scene, so scale it down
+        floorModel = glm::translate(floorModel, glm::vec3(0.0f, -11.0f, 0.0f));
 
         // bind textures on corresponding texture units
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture1);
-
-        ourShader.use();
+        floorShader.use();
 
         // pass projection matrix to shader (note that in this case it could change every frame)
-        ourShader.setMat4("projection", projection);
+        floorShader.setMat4("projection", floorProjection);
 
         // camera/view transformation
-        ourShader.setMat4("view", view);
+        floorShader.setMat4("view", floorView);
 
         // render boxes
         glBindVertexArray(VAO);
-        ourShader.setMat4("model", model);
+        floorShader.setMat4("model", floorModel);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 
 
 
 
-
-
-
-
-
-
-
-
-
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -259,13 +356,11 @@ int main()
     glDeleteBuffers(1, &EBO);
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
     glfwTerminate();
     return 0;
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
-// ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -279,10 +374,20 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS){
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            camera.ProcessKeyboard(FORWARD, 5*deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            camera.ProcessKeyboard(BACKWARD, 5*deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            camera.ProcessKeyboard(LEFT, 5*deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            camera.ProcessKeyboard(RIGHT, 5*deltaTime);
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
-// ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     // make sure the viewport matches the new window dimensions; note that width and 
@@ -291,7 +396,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 // glfw: whenever the mouse moves, this callback is called
-// -------------------------------------------------------
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
     if (firstMouse)
@@ -311,7 +415,6 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 }
 
 // glfw: whenever the mouse scroll wheel scrolls, this callback is called
-// ----------------------------------------------------------------------
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessMouseScroll(yoffset);
