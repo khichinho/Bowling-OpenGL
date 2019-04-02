@@ -1,4 +1,5 @@
 #include <iostream>
+#include <math.h>
 
 #include <glad/glad.h>
 #define GL_GLEXT_PROTOTYPES
@@ -11,7 +12,6 @@
 #include "shader.h"
 #include "camera.h"
 #include "model.h"
-
 #include <SOIL/SOIL.h>
 #include <vector>
 
@@ -25,7 +25,7 @@ const unsigned int SCR_WIDTH = 1200;
 const unsigned int SCR_HEIGHT = 800;
 
 // camera
-Camera camera(glm::vec3(0.0f, 2.5f, 7.0f));
+Camera camera(glm::vec3(0.0, 2.5, 8.0));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -109,11 +109,20 @@ int main()
          100.0f, 0.0f,  0.0f,   1.0f, 1.0f, // top right
          100.0f, 0.0f, -1500.0f,   1.0f, 0.0f, // bottom right
         -100.0f, 0.0f, -1500.0f,   0.0f, 0.0f, // bottom left
-        -100.0f, 0.0f,  0.0f,   0.0f, 1.0f  // top left 
+        -100.0f, 0.0f,  0.0f,   0.0f, 1.0f,  // top left
+
+         100.0f, 30.0f,  0.0f,   0.0f, 1.0f, // gutter back right
+         100.0f, 30.0f, -1500.0f,   0.0f, 0.0f, // gutter front right
+        -100.0f, 30.0f, -1500.0f,   1.0f, 0.0f, // gutter front left
+        -100.0f, 30.0f,  0.0f,   1.0f, 1.0f  // gutter back left
     };
     unsigned int indices[] = {  
-        0, 1, 3, // first triangle
-        1, 2, 3  // second triangle
+        0, 1, 3, // base
+        1, 2, 3, // base
+        0, 1, 5, // gutter right
+        5, 0, 4, // gutter right
+        7, 6, 2, //gutter left
+        2, 7, 3 //gutter left
     };
 
     unsigned int VBO, VAO, EBO;
@@ -176,21 +185,44 @@ int main()
 
 
 
+    int once = 0;
+    int once1 = 0;
 
+    int followBall = 0;
 
-    int pinsDistance = 30.0f;
-    int omega = 0.0f;
-    int speed = -3.0f;
-    int distance = 0.0f;
-    // pins data
+    int isBallonFloor = 1;
+    float ballWeight = 100.0;
+    float pinWeight = 50.0;
+
+    float ballHitAt = -1360.0;
+    float ballSpin = 80.0;
+    float pinsDistance = 30.0f;
+
+    glm::vec3 ballSpeed = glm::vec3(0, 0, -5.0);
+    glm::vec3 omega = glm::vec3(ballSpeed.x, ballSpeed.y, ballSpeed.z);
+    glm::vec3 angle = glm::vec3(0, 0, 0);
+
     glm::vec3 pinLocation = glm::vec3(0.0f, 0.0f, 0.0f);
     glm::vec3 ballLocation = glm::vec3(0.0f, 0.0f, 0.0f);
 
     vector<glm::vec3> pinLocationVector;
-
-    int isBallonFloor = 1;
+    vector<glm::vec3> pinHitDirection;
     vector<int> isPinHit;
-    for(int i=0; i<10; i++) isPinHit.push_back(0);
+    vector<int> isPinHitComplete;
+    vector<float> pinFallAngle;
+    vector<float> pinFallSpeed;
+
+    for(int i=0; i<10; i++){
+        isPinHit.push_back(0);
+        isPinHitComplete.push_back(0);
+        pinHitDirection.push_back(glm::vec3(0,0,0));
+        pinFallAngle.push_back(0.0);
+        pinFallSpeed.push_back(0.0);
+    }
+
+
+
+
 
     // render loop
     while (!glfwWindowShouldClose(window))
@@ -212,7 +244,6 @@ int main()
 
 
         ///////////// PINS ////////////////
-        // don't forget to enable shader before setting uniforms
         pinShader.use();
 
         // view/projection transformations
@@ -222,43 +253,58 @@ int main()
         glm::mat4 pinView = camera.GetViewMatrix();
         pinShader.setMat4("view", pinView);
         
-        glm::mat4 pinModel = glm::mat4(1.0f);
-        pinShader.setMat4("model", pinModel);
-        pinModel = glm::scale(pinModel, glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
+        vector<glm::mat4> pinModel;
 
         for(int i=0; i<10; i++)
         {
+            pinModel.push_back(glm::mat4(1.0f));
+            pinShader.setMat4("model", pinModel[i]);
+            pinModel[i] = glm::scale(pinModel[i], glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
+
             // render the loaded model
             if(i==0){
-                pinModel = glm::translate(pinModel, glm::vec3(1.5*pinsDistance, -10.9f, -1450.0f));
                 pinLocation += glm::vec3(1.5*pinsDistance, 0.0f, -1450.0f);
             }
-            pinShader.setMat4("model", pinModel);
+            pinModel[i] = glm::translate(pinModel[i], pinLocation);
 
-            if(isPinHit.at(i) == 0){
-                pinModels[i].Draw(pinShader);
+            pinLocationVector.push_back(pinLocation + glm::vec3(0, 0.0f, 0));
+
+            if(isPinHit.at(i) == 1){
+                pinModel[i] = glm::translate(pinModel[i], glm::vec3(0, 6.0f, 0));
+                if(pinFallAngle.at(i) > -89.9)
+                {
+                    pinModel[i] = glm::translate(pinModel[i], glm::vec3(pinHitDirection.at(i).x, 0, pinHitDirection.at(i).z));
+                    pinLocationVector.at(i).x += pinHitDirection.at(i).x;
+                    pinLocationVector.at(i).z += pinHitDirection.at(i).z;
+                    if((pinFallAngle.at(i) + -1.0*pinFallSpeed.at(i)) < -90.0){
+                        pinFallAngle.at(i) = -90.0f;
+                        isPinHitComplete.at(i) == 1;
+                    }
+                    else
+                    {
+                        pinFallAngle.at(i) += -1.0*pinFallSpeed.at(i);
+                    }
+                }
+                pinModel[i] = glm::rotate(pinModel[i], glm::radians(pinFallAngle.at(i)), glm::vec3( pinHitDirection.at(i).z, 0, -pinHitDirection.at(i).x));
             }
+            pinShader.setMat4("model", pinModel[i]);
+            pinModels[i].Draw(pinShader);
 
             // arrangment for pin structure
             if(i==3){
-                pinModel = glm::translate(pinModel, glm::vec3(2.5*pinsDistance, 0.0f, pinsDistance));
                 pinLocation += glm::vec3(2.5*pinsDistance, 0.0f, pinsDistance);
             }
             else if(i==6){
-                pinModel = glm::translate(pinModel, glm::vec3(1.5*pinsDistance, 0.0f, pinsDistance));
                 pinLocation += glm::vec3(1.5*pinsDistance, 0.0f, pinsDistance);
             }
             else if(i==8){
-                pinModel = glm::translate(pinModel, glm::vec3(0.5*pinsDistance, 0.0f, pinsDistance));
                 pinLocation += glm::vec3(0.5*pinsDistance, 0.0f, pinsDistance);
             }
             else{
-                pinModel = glm::translate(pinModel, glm::vec3(-pinsDistance, 0.0f, 0.0f));
                 pinLocation += glm::vec3(-pinsDistance, 0.0f, 0.0f);
             }
-            pinLocationVector.push_back(pinLocation);
         }
-
+        pinLocation = glm::vec3(0.0f, 0.0f, 0.0f);
 
 
 
@@ -279,9 +325,19 @@ int main()
 
         ball_Model = glm::scale(ball_Model, glm::vec3(0.02f, 0.02f, 0.02f));	// it's a bit too big for our scene, so scale it down
 
-        distance += speed;
-        ball_Model = glm::translate(ball_Model, glm::vec3(0.0f, 0.0f, distance));
-        ballLocation += glm::vec3(0.0f, 0.0f, distance);
+        angle += omega;
+        ballLocation += ballSpeed;
+
+        ball_Model = glm::translate(ball_Model, ballLocation);
+        ball_Model = glm::translate(ball_Model, glm::vec3(0, 11.0f, 0));
+        // ball_Model = glm::translate(ball_Model, glm::vec3(0, - 11.0f*(cos(M_PI*angle.z/180)), 0));
+
+        // ball_Model = glm::rotate(ball_Model, glm::radians(angle.x), glm::vec3(0, ballLocation.z, 0));
+        // ball_Model = glm::rotate(ball_Model, glm::radians(angle.y), glm::vec3(0, 0, ballLocation.z));
+        // ball_Model = glm::rotate(ball_Model, glm::radians(angle.z), glm::vec3(ballLocation.z, 0, 0));
+
+        ball_Model = glm::rotate(ball_Model, glm::radians(angle.z), glm::vec3(0, 0, 1.0));
+
 
         // don't forget to enable shader before setting uniforms
         ballShader.use();
@@ -292,7 +348,6 @@ int main()
 
         // render the loaded model
         ballShader.setMat4("model", ball_Model);
-        ball_Model = glm::translate(ball_Model, glm::vec3(0.0f, -11.0f, 0.0f));
 
         if(isBallonFloor == 1 ){ ballModel.Draw(ballShader); }
 
@@ -301,13 +356,62 @@ int main()
 
         // intersection loop here
         for(int i=0; i<10; i++){
-
+            if(once == 0){
+                cout << "PIN " << i << " x: " << pinLocationVector[i].x << " y: " << pinLocationVector[i].y << " z: " << pinLocationVector[i].z << endl;
+            }
+            if(glm::distance(ballLocation, pinLocationVector[i]) <= 17.0 && isPinHit.at(i) == 0){
+                isPinHit.at(i) = 1;
+                pinHitDirection.at(i) = glm::normalize(ballLocation - pinLocationVector[i]);
+                pinFallSpeed.at(i) = glm::length(ballLocation - pinLocationVector[i]);
+                cout << "PIN HIT AT x: " << ballLocation.x << " y: " << ballLocation.y << " z: " << ballLocation.z << endl;
+                if(pinWeight/ballWeight >= 2){
+                    ballSpeed = -ballSpeed;
+                    omega = ballSpeed;
+                }
+                else{
+                    ballSpeed -= pinWeight*glm::vec3(pinHitDirection.at(i).x*ballSpeed.x, pinHitDirection.at(i).y*ballSpeed.y, pinHitDirection.at(i).z*ballSpeed.z)/ballWeight;
+                    omega = ballSpeed;
+                }
+            }
         }
-        if(ballLocation.z < -5050/0.02 ){
-            cout<<ballLocation.z;
+        
+        for(int i=0; i<10; i++)
+        {
+            for(int j=0; j<10; j++)
+            {
+                if(isPinHitComplete.at(i) == 0 && isPinHit.at(j) && 0 && i!=j){
+                    // distance between is 42.4
+                    if(glm::distance(pinLocationVector[i], pinLocationVector[j]) <= 41 && isPinHit.at(j) == 0){
+                        // cout<< glm::distance(pinLocationVector[i], pinLocationVector[j])<<endl;
+                        isPinHit.at(j) = 1;
+                        pinHitDirection.at(j) = glm::normalize(pinLocationVector[i] - pinLocationVector[j]);
+                        pinFallSpeed.at(j) = glm::length(pinFallSpeed.at(i) - pinLocationVector[i]);
+                        cout << "PIN HIT AT x: " << ballLocation.x << " y: " << ballLocation.y << " z: " << ballLocation.z << endl;
+                    }
+                }
+            }
+        }
+
+        once += 1;
+        if(ballLocation.z < -1500 ){
             isBallonFloor = 0;
+            if(once1 == 0){
+                for(int i=0; i<10; i++){
+                    cout << "PIN " << i << " x: " << pinLocationVector[i].x << " y: " << pinLocationVector[i].y << " z: " << pinLocationVector[i].z << endl;
+                }
+                once1 = 1;
+            }
         }
 
+        ballLocation.x = ballSpin*sin(M_PI*ballLocation.z/ballHitAt);
+        if(ballLocation.x > 95 || ballLocation.x < -95 || ballLocation.z < -1500 || ballLocation.z > 10 ){
+            isBallonFloor = 0;
+            ballSpeed = glm::vec3(0,0,0);
+        }
+        // camera movement
+        if(followBall == 1 && ballLocation.z > -1500){
+            camera.ProcessKeyboard(FORWARD, deltaTime);
+        }
 
 
 
@@ -323,7 +427,6 @@ int main()
         pinShader.setMat4("model", floorModel);
 
         floorModel = glm::scale(floorModel, glm::vec3(0.02f, 0.02f, 0.02f)); // it's a bit too big for our scene, so scale it down
-        floorModel = glm::translate(floorModel, glm::vec3(0.0f, -11.0f, 0.0f));
 
         // bind textures on corresponding texture units
         glActiveTexture(GL_TEXTURE0);
@@ -339,7 +442,7 @@ int main()
         // render boxes
         glBindVertexArray(VAO);
         floorShader.setMat4("model", floorModel);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, 18, GL_UNSIGNED_INT, 0);
 
 
 
